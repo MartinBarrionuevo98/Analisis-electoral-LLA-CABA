@@ -1,0 +1,317 @@
+#Cargamos las librerias
+
+library(readxl)
+library(sf)
+library(dplyr)
+library(tidyverse)
+library(viridis)
+library(ggrepel)
+library(patchwork)
+library(ggtext)
+library(gt)
+
+#Cargamos los datasets
+
+electoral <- read.csv("datos/cabaelec.csv")
+socioeco <- read_xlsx("datos/caba.xlsx")
+mapa_caba <- st_read("datos/comunas/comunas.shp")
+
+#Extraemos el número de comuna del nombre del departamento/radio y convertimos el NSE en valor numérico
+#Luego, calculamos el promedio de NSE por comuna
+
+socioeco <- socioeco %>%
+  mutate(comuna_num = as.integer(gsub("Comuna ", "", `Nombre de departamentos/comuna`)),
+         NSE = as.numeric(`Segmento socioeconómico del radio`)) %>%
+  select(comuna_num, NSE)
+
+socioeco_comuna <- socioeco %>%
+  group_by(comuna_num) %>%
+  summarise(
+    NSE_comuna = mean(NSE, na.rm = TRUE)
+  ) %>%
+  ungroup() 
+
+#Unimos el mapa con los datos NSE
+
+mapa_caba <- mapa_caba %>%
+  left_join(socioeco_comuna, by = c("comuna" = "comuna_num"))
+
+mapa_caba <- mapa_caba %>%
+  mutate(
+    NSE_heptil = ntile(NSE_comuna, 7)
+  )
+
+#Niveles NSE
+mapa_caba$NSE_factor_heptil <- factor(mapa_caba$NSE_heptil, levels = 1:7)
+
+#Graficamos
+
+ggplot(mapa_caba) +
+  geom_sf(aes(fill = NSE_factor_heptil), color = "white", size = 0.2) +
+  scale_fill_manual(
+    values = c(
+      "1" = "#9ACD32", # verde claro
+      "2" = "#D0E6A5", # verde amarillento
+      "3" = "#F9E79F", # amarillo pastel
+      "4" = "#FAD7A0", # naranja claro
+      "5" = "#F5B7B1", # rosado claro
+      "6" = "#EC7063", # rojo suave
+      "7" = "#C0392B"  # rojo oscuro
+    ),
+    name = "Nivel Socioeconómico (NSE)",
+    labels = c(
+      "1" = "1 · Clase alta",
+      "2" = "2 · Clase media alta",
+      "3" = "3 · Clase media",
+      "4" = "4 · Clase media baja",
+      "5" = "5 · Clase baja integrada",
+      "6" = "6 · Clase baja",
+      "7" = "7 · Clase muy baja"
+    )
+  ) +
+  labs(
+    title = "Mapa de Nivel Socioeconómico por comuna - CABA",
+    fill = "NSE",
+    caption = "Fuente: Índice de Estratificación y Desigualdad Social, De Grande, P. y Salvia, A. (2022)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 11, face = "bold"),
+    legend.text = element_text(size = 10),
+    plot.title = element_text(face = "bold", size = 14),
+    plot.caption = element_text(size = 9, color = "black", hjust = 0),
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank()
+  )
+
+#Desempeño electoral LLA por comuna en CABA
+
+lla <- electoral %>%
+  filter(agrupacion_nombre == "ALIANZA LA LIBERTAD AVANZA") %>%
+  mutate(comuna = as.numeric(gsub("COMUNA ", "", seccion_nombre))) %>%
+  group_by(comuna) %>%
+  summarise(votos_lla = sum(votos_cantidad, na.rm = TRUE))
+
+#Unimos con el shapefile de comunas
+mapa_caba <- mapa_caba %>%
+  left_join(lla, by = "comuna")
+
+#Creamos el mapa para visualizar el rendimiento electoral de LLA por comuna
+mapa_centroides <- mapa_caba %>%
+  st_centroid() %>%
+  cbind(st_coordinates(.))
+
+#Mapa electoral Diputados LLA 2025 en CABA
+
+ggplot(mapa_caba) +
+  geom_sf(aes(fill = votos_lla), color = "white", size = 0.2) +
+  geom_text_repel(
+    data = mapa_centroides,
+    aes(X, Y, label = comuna),
+    size = 4,
+    color = "black",
+    max.overlaps = 15
+  ) +
+  scale_fill_gradientn(
+    colors = c("#f2e5ff", "#c29cff", "#8c5cff", "#5a00b3"), # violeta claro → oscuro
+    name = "Votos LLA",
+    na.value = "grey90"
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Intensidad de votos de La Libertad Avanza por comuna",
+    subtitle = "Ciudad Autónoma de Buenos Aires",
+    caption = "Fuente: Datos electorales"
+  )
+
+#Podemos ver las comunas donde LLA obtuvo mayor porcentaje de votos mediante una tabla con la libreria gt
+
+lla_comunas <- electoral %>%
+  filter(agrupacion_nombre == "ALIANZA LA LIBERTAD AVANZA") %>%
+  mutate(comuna = as.numeric(gsub("COMUNA ", "", seccion_nombre))) %>%
+  group_by(comuna) %>%
+  summarise(votos_lla = sum(votos_cantidad, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(
+    pct_lla = votos_lla / sum(votos_lla) * 100,  # porcentaje
+    nombre_comuna = case_when(
+      comuna == 1  ~ "Retiro, San Nicolás, Puerto Madero, San Telmo, Monserrat, Constitución",
+      comuna == 2  ~ "Recoleta",
+      comuna == 3  ~ "Balvanera, San Cristóbal",
+      comuna == 4  ~ "La Boca, Barracas, Parque Patricios, Nueva Pompeya",
+      comuna == 5  ~ "Almagro, Boedo",
+      comuna == 6  ~ "Caballito",
+      comuna == 7  ~ "Flores, Parque Chacabuco",
+      comuna == 8  ~ "Villa Soldati, Villa Riachuelo, Villa Lugano",
+      comuna == 9  ~ "Liniers, Mataderos, Parque Avellaneda",
+      comuna == 10 ~ "Villa Real, Monte Castro, Versalles, Floresta, Vélez Sarsfield, Villa Luro",
+      comuna == 11 ~ "Villa General Mitre, Villa Devoto, Villa del Parque, Villa Santa Rita",
+      comuna == 12 ~ "Coghlan, Saavedra, Villa Urquiza, Villa Pueyrredón",
+      comuna == 13 ~ "Núñez, Belgrano, Colegiales",
+      comuna == 14 ~ "Palermo",
+      comuna == 15 ~ "Chacarita, Villa Ortúzar, Agronomía, Villa Crespo, La Paternal, Parque Chas"
+    )
+  ) %>%
+  arrange(desc(votos_lla)) %>%
+  select(comuna, nombre_comuna, votos_lla, pct_lla)
+
+#Realizamos la tabla con gt
+
+lla_comunas %>%
+  gt() %>%
+  fmt_number(columns = votos_lla, decimals = 0, sep_mark = ".") %>%
+  fmt_number(columns = pct_lla, decimals = 1, suffixing = FALSE) %>%
+  cols_label(
+    comuna = "Comuna",
+    nombre_comuna = "Barrios",
+    votos_lla = "Votos",
+    pct_lla = "%"
+  ) %>%
+  tab_header(
+    title = md("**Resultados electorales por comuna - CABA**"),
+    subtitle = md("*La Libertad Avanza*")
+  ) %>%
+  tab_style(
+    style = list(cell_text(weight = "bold")),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_options(
+    table.font.size = 13,
+    data_row.padding = px(5),
+    heading.title.font.size = 16,
+    heading.subtitle.font.size = 13
+  )
+
+#Comparamos con los votos que obtuvo LLA en las legislativas de CABA Mayo 2025
+
+votos_mayo <- data.frame(
+  comuna = 1:15,
+  votos_lla_mayo = c(
+    32950, 32032, 28407, 29653, 27113,
+    31181, 34619, 24822, 28751, 29277,
+    35952, 39049, 48223, 45017, 28843
+  )
+)
+
+mapa_caba_mayo <- mapa_caba %>%
+  left_join(votos_mayo, by = "comuna")
+
+#Unimos la información de votos de Mayo con el shapefile de comunas usando left_join y calculamos los centroides de cada comuna
+
+mapa_centroides_mayo <- mapa_caba_mayo %>%
+  st_centroid() %>%
+  cbind(st_coordinates(.))
+
+#Determinamos el valor mínimo y máximo de votos combinando ambos periodos, con el fin de fijar una escala de colores consistente en los mapas comparativos
+
+min_votos <- min(c(votos_mayo$votos_lla_mayo, lla_comunas$votos_lla))
+max_votos <- max(c(votos_mayo$votos_lla_mayo, lla_comunas$votos_lla))
+
+# Mapa de Mayo
+
+legend_name <- "Votos LLA - CABA"
+
+mapa_votos_mayo <- ggplot(mapa_caba_mayo) +
+  geom_sf(aes(fill = votos_lla_mayo), color = "white", size = 0.2) +
+  scale_fill_gradientn(
+    colors = c("#f2e5ff", "#c29cff", "#8c5cff", "#5a00b3"),
+    limits = c(min_votos, max_votos),
+    name = legend_name
+  ) +
+  theme_void() +
+  labs(title = "Votos LLA Mayo") +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+    # Importante: No definir position de leyenda aquí para que patchwork la maneje
+  )
+
+#Mapa de octubre
+
+mapa_votos_octubre <- ggplot(mapa_caba) +
+  geom_sf(aes(fill = votos_lla), color = "white", size = 0.2) +
+  scale_fill_gradientn(
+    colors = c("#f2e5ff", "#c29cff", "#8c5cff", "#5a00b3"),
+    limits = c(min_votos, max_votos),
+    name = legend_name
+  ) +
+  theme_void() +
+  labs(title = "Votos LLA Octubre") +
+  theme(
+    plot.title = element_text(hjust = 0.5)
+    # Importante: No definir position de leyenda aquí
+  )
+
+#Combinamos ambos mapas
+
+combined_map <- mapa_votos_mayo + mapa_votos_octubre +
+  # Usamos plot_layout para forzar la recolección de leyendas
+  plot_layout(guides = 'collect') + 
+  plot_annotation(
+    title = "Comparación de votos LLA - CABA 2025",
+    caption = "Fuente: Dirección Electoral Nacional",
+    theme = theme(
+      plot.title = element_text(hjust = 0.5, size = 16),
+      plot.caption = element_text(hjust = 1, size = 10, face = "italic"),
+      # Establecemos la posición de la única leyenda aquí
+      legend.position = 'right' 
+    )
+  )
+
+#Visualizamos y comparamos los votos de LLA por comuna en ambas elecciones
+combined_map
+
+#Podemos observar las comunas donde el apoyo a LLA se incremento en las legislativas de Octubre
+
+votos_diff <- left_join(votos_mayo, lla_comunas, by = "comuna") %>%
+  mutate(diferencia = votos_lla - votos_lla_mayo)
+
+mapa_caba_diff <- mapa_caba %>%
+  left_join(votos_diff, by = "comuna")
+
+mapa_centroides_diff <- mapa_caba_diff %>%
+  st_centroid() %>%
+  cbind(st_coordinates(.))
+
+#Visualizamos
+
+ggplot(mapa_caba_diff) +
+  geom_sf(aes(fill = diferencia), color = "white", size = 0.2) +
+  geom_text_repel(
+    data = mapa_centroides_diff,
+    aes(X, Y, label = comuna),
+    size = 4, color = "black", max.overlaps = 15
+  ) +
+  scale_fill_gradient2(
+    low = "#fee5d9",    # crecimiento bajo
+    mid = "#f7f7f7",    # neutro
+    high = "#a50f15",   # crecimiento alto
+    midpoint = 0,
+    name = "Aumento votos LLA"
+  ) +
+  labs(
+    title = "Incremento de votos LLA por Comuna (Mayo vs Octubre)",
+    subtitle = "CABA",
+    caption = "*Fuente: Dirección Electoral Nacional*"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+    plot.caption = element_markdown(size = 9, color = "gray40") # <--- aquí
+  )
+
+#Analisis regresion: un aumento en el nivel socio-economico se relaciona con mayor apoyo a LLA?
+
+nse_comunas
+reg_data <- lla_comunas %>%
+  left_join(socioeco_comuna, by = c("comuna" = "comuna_num")) %>%
+  mutate(
+    NSE_comuna_inv = 8 - NSE_comuna,  # invierte la escala: 1→7, 7→1
+    pct_lla = votos_lla / sum(votos_lla) * 100,
+    nombre_comuna = as.character(comuna)  # solo el número de comuna
+  )
