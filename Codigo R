@@ -9,6 +9,8 @@ library(ggrepel)
 library(patchwork)
 library(ggtext)
 library(gt)
+library(lmtest)
+library(sandwich)
 
 #Cargamos los datasets
 
@@ -42,6 +44,7 @@ mapa_caba <- mapa_caba %>%
   )
 
 #Niveles NSE
+
 mapa_caba$NSE_factor_heptil <- factor(mapa_caba$NSE_heptil, levels = 1:7)
 
 #Graficamos
@@ -50,13 +53,13 @@ ggplot(mapa_caba) +
   geom_sf(aes(fill = NSE_factor_heptil), color = "white", size = 0.2) +
   scale_fill_manual(
     values = c(
-      "1" = "#9ACD32", # verde claro
-      "2" = "#D0E6A5", # verde amarillento
-      "3" = "#F9E79F", # amarillo pastel
-      "4" = "#FAD7A0", # naranja claro
-      "5" = "#F5B7B1", # rosado claro
-      "6" = "#EC7063", # rojo suave
-      "7" = "#C0392B"  # rojo oscuro
+      "1" = "#9ACD32", 
+      "2" = "#D0E6A5", 
+      "3" = "#F9E79F", 
+      "4" = "#FAD7A0",
+      "5" = "#F5B7B1", 
+      "6" = "#EC7063", 
+      "7" = "#C0392B"  
     ),
     name = "Nivel Socioeconómico (NSE)",
     labels = c(
@@ -116,7 +119,7 @@ ggplot(mapa_caba) +
     max.overlaps = 15
   ) +
   scale_fill_gradientn(
-    colors = c("#f2e5ff", "#c29cff", "#8c5cff", "#5a00b3"), # violeta claro → oscuro
+    colors = c("#f2e5ff", "#c29cff", "#8c5cff", "#5a00b3"),
     name = "Votos LLA",
     na.value = "grey90"
   ) +
@@ -225,7 +228,6 @@ mapa_votos_mayo <- ggplot(mapa_caba_mayo) +
   labs(title = "Votos LLA Mayo") +
   theme(
     plot.title = element_text(hjust = 0.5)
-    # Importante: No definir position de leyenda aquí para que patchwork la maneje
   )
 
 #Mapa de octubre
@@ -241,13 +243,11 @@ mapa_votos_octubre <- ggplot(mapa_caba) +
   labs(title = "Votos LLA Octubre") +
   theme(
     plot.title = element_text(hjust = 0.5)
-    # Importante: No definir position de leyenda aquí
   )
 
 #Combinamos ambos mapas
 
 combined_map <- mapa_votos_mayo + mapa_votos_octubre +
-  # Usamos plot_layout para forzar la recolección de leyendas
   plot_layout(guides = 'collect') + 
   plot_annotation(
     title = "Comparación de votos LLA - CABA 2025",
@@ -255,7 +255,6 @@ combined_map <- mapa_votos_mayo + mapa_votos_octubre +
     theme = theme(
       plot.title = element_text(hjust = 0.5, size = 16),
       plot.caption = element_text(hjust = 1, size = 10, face = "italic"),
-      # Establecemos la posición de la única leyenda aquí
       legend.position = 'right' 
     )
   )
@@ -285,9 +284,9 @@ ggplot(mapa_caba_diff) +
     size = 4, color = "black", max.overlaps = 15
   ) +
   scale_fill_gradient2(
-    low = "#fee5d9",    # crecimiento bajo
-    mid = "#f7f7f7",    # neutro
-    high = "#a50f15",   # crecimiento alto
+    low = "#fee5d9",   
+    mid = "#f7f7f7",     
+    high = "#a50f15",   
     midpoint = 0,
     name = "Aumento votos LLA"
   ) +
@@ -302,7 +301,7 @@ ggplot(mapa_caba_diff) +
     axis.text = element_blank(),
     axis.ticks = element_blank(),
     axis.title = element_blank(),
-    plot.caption = element_markdown(size = 9, color = "gray40") # <--- aquí
+    plot.caption = element_markdown(size = 9, color = "gray40")
   )
 
 #Analisis regresion: un aumento en el nivel socio-economico se relaciona con mayor apoyo a LLA?
@@ -347,7 +346,7 @@ fill = "Comuna"
 ) +
 theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-5. Para hacer la regresion, invertimos los valores NSE (ya que los valores mas cercanos a 7 significan mayor déficit económico
+5. Para hacer la regresion, invertimos los valores NSE (ya que los valores mas cercanos a 7 significan mayor déficit económico)
 
 lla_mesas <- lla_mesas %>%
 mutate(NSE_inv = max(NSE_prom, na.rm = TRUE) + 1 - NSE_prom)
@@ -397,5 +396,16 @@ plot.caption = element_text(size = 9, face = "italic"),
 axis.title = element_text(face = "bold"),
 panel.grid.minor = element_blank()
 )
+
+##Verificamos que algunos de los supuestos del modelo, como el de homocedasticidad y la normalidad de los residuos, no se cumplen 
+
+par(mfrow = c(2,2))
+plot(model)
+
+##Para validar la significancia estadistica del modelo, estimamos los Errores Estándar Robustos 
+
+vcov_robusto <- vcovHC(model, type = "HC3")
+coeftest(model, vcov = vcov_robusto)
+
 
 
