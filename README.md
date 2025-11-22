@@ -15,12 +15,12 @@ Principales hallazgos
 
 1.Fuerte fractura electoral norte-sur: las comunas con NSE alto concentran el mayor caudal de votos.
 2.El coeficiente del NSE (≈5.9) indica que cada unidad de aumento en el nivel socioeconómico se asocia con un incremento de casi 6 puntos porcentuales en el voto a LLA.
-3.El modelo es estadísticamente significativo (p < 0.001), aunque presenta leve heterocedasticidad.
-4.La estimación con errores estándar robustos confirma la robustez de los resultados.
+3.El modelo es estadísticamente significativo (p < 0.001), aunque presenta algunas desviaciones de los supuestos del modelo de regresión. 
+4.La estimación con errores estándar robustos confirma la validez estadística de los resultados.
 
 Próximos pasos
 
-Este estudio tiene un enfoque exploratorio. Se propone avanzar hacia modelos multivariados que integren variables sociodemográficas y educativas, con el fin de comprender en mayor profundidad las bases sociales del voto a LLA en la ciudad.
+Este estudio tiene un enfoque exploratorio. Es un camino para avanzar hacia modelos multivariados que integren variables sociodemográficas y educativas, con el fin de comprender en mayor profundidad las bases sociales del voto a LLA en la ciudad.
 
 Herramientas utilizadas
 
